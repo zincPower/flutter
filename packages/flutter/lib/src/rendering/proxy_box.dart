@@ -290,6 +290,7 @@ class RenderConstrainedBox extends RenderProxyBox {
     return height;
   }
 
+  // SizeBox 的布局会调用到这里
   @override
   void performLayout() {
     final BoxConstraints constraints = this.constraints;

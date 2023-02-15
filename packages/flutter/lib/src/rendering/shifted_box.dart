@@ -70,6 +70,8 @@ abstract class RenderShiftedBox extends RenderBox with RenderObjectWithChildMixi
   void paint(PaintingContext context, Offset offset) {
     final RenderBox? child = this.child;
     if (child != null) {
+      // 从 child.parentData 中取出子节点相对当前节点的偏移，加上当前节点在屏幕中的偏移，
+      // 便是子节点在屏幕中的偏移。
       final BoxParentData childParentData = child.parentData! as BoxParentData;
       context.paintChild(child, childParentData.offset + offset);
     }
@@ -352,6 +354,7 @@ abstract class RenderAligningShiftedBox extends RenderShiftedBox {
     assert(child!.hasSize);
     assert(hasSize);
     assert(_resolvedAlignment != null);
+    // 计算自身 size 和子 size ，综合 alignment 进行得出子 offset
     final BoxParentData childParentData = child!.parentData! as BoxParentData;
     childParentData.offset = _resolvedAlignment!.alongOffset(size - child!.size as Offset);
   }
@@ -432,11 +435,16 @@ class RenderPositionedBox extends RenderAligningShiftedBox {
     ));
   }
 
+  // [Jiang Pengyong] Align 的布局
   @override
   void performLayout() {
     final BoxConstraints constraints = this.constraints;
     final bool shrinkWrapWidth = _widthFactor != null || constraints.maxWidth == double.infinity;
     final bool shrinkWrapHeight = _heightFactor != null || constraints.maxHeight == double.infinity;
+
+    print("[Algin layout] parent constraints: $constraints, "
+        "shrinkWrapWidth: $shrinkWrapWidth, "
+        "shrinkWrapHeight: $shrinkWrapHeight");
 
     if (child != null) {
       child!.layout(constraints.loosen(), parentUsesSize: true);

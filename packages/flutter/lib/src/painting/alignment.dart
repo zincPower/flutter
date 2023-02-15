@@ -297,6 +297,7 @@ class Alignment extends AlignmentGeometry {
   Offset alongOffset(Offset other) {
     final double centerX = other.dx / 2.0;
     final double centerY = other.dy / 2.0;
+    print("[along offset] center: $centerX x $centerY, position: $x x $y");
     return Offset(centerX + x * centerX, centerY + y * centerY);
   }
 

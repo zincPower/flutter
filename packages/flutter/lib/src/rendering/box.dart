@@ -215,6 +215,8 @@ class BoxConstraints extends Constraints {
 
   /// Returns new box constraints that respect the given constraints while being
   /// as close as possible to the original constraints.
+  /// 返回遵守给定约束同时尽可能接近原始约束的新框约束。
+  /// 会将返回的 size 强制约束在参数 constraints 中
   BoxConstraints enforce(BoxConstraints constraints) {
     return BoxConstraints(
       minWidth: clampDouble(minWidth, constraints.minWidth, constraints.maxWidth),
@@ -2442,6 +2444,10 @@ abstract class RenderBox extends RenderObject {
     assert(size.isFinite);
   }
 
+  // 布局的逻辑都是在 perform layout 中实现的，一般要进行以下操作：
+  // 1、如果有子组件，则对子组件进行递归布局。
+  // 2、确定当前组件的大小（ size ），通常会依赖子组件的大小。
+  // 3、确定子组件在当前组件中的起始偏移。
   @override
   void performLayout() {
     assert(() {

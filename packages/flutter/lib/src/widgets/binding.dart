@@ -482,7 +482,7 @@ mixin WidgetsBinding on BindingBase, ServicesBinding, SchedulerBinding, GestureB
   ///
   /// Rarely used directly. Instead, consider using [FocusScope.of] to obtain
   /// the [FocusScopeNode] for a given [BuildContext].
-  ///
+  ///s
   /// See [FocusManager] for more details.
   FocusManager get focusManager => _buildOwner!.focusManager;
 

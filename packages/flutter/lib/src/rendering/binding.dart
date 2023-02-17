@@ -513,9 +513,9 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   @protected
   void drawFrame() {
     assert(renderView != null);
-    pipelineOwner.flushLayout();
-    pipelineOwner.flushCompositingBits();
-    pipelineOwner.flushPaint();
+    pipelineOwner.flushLayout();          // 重新布局
+    pipelineOwner.flushCompositingBits(); //
+    pipelineOwner.flushPaint();           // 重新绘制
     if (sendFramesToEngine) {
       renderView.compositeFrame(); // this sends the bits to the GPU
       pipelineOwner.flushSemantics(); // this also sends the semantics to the OS.

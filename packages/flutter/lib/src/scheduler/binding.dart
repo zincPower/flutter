@@ -747,6 +747,10 @@ mixin SchedulerBinding on BindingBase {
     _postFrameCallbacks.add(callback);
   }
 
+  int getPostFrameCallbacksSize(){
+    return _postFrameCallbacks.length;
+  }
+
   Completer<void>? _nextFrameCompleter;
 
   /// Returns a Future that completes after the frame completes.
@@ -1219,9 +1223,11 @@ mixin SchedulerBinding on BindingBase {
       }
 
       // POST-FRAME CALLBACKS
+      // 这里会进行 _postFrameCallbacks 回调，并且进行清空
       _schedulerPhase = SchedulerPhase.postFrameCallbacks;
       final List<FrameCallback> localPostFrameCallbacks =
           List<FrameCallback>.of(_postFrameCallbacks);
+      // 清空所有的回调
       _postFrameCallbacks.clear();
       for (final FrameCallback callback in localPostFrameCallbacks) {
         _invokeFrameCallback(callback, _currentFrameTimeStamp!);

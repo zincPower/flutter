@@ -130,7 +130,7 @@ class PaintingContext extends ClipContext {
       return true;
     }());
     OffsetLayer? childLayer = child._layerHandle.layer as OffsetLayer?;
-    if (childLayer == null) {
+    if (childLayer == null) {   // 如果边界节点没有 layer，则为其创建一个 OffsetLayer
       assert(debugAlsoPaintedParent);
       assert(child._layerHandle.layer == null);
 
@@ -138,15 +138,17 @@ class PaintingContext extends ClipContext {
       // replace the layer for repaint boundaries. That assertion does not
       // apply here because this is exactly the place designed to create a
       // layer for repaint boundaries.
+      // 创建一个 OffsetLayer
       final OffsetLayer layer = child.updateCompositedLayer(oldLayer: null);
       child._layerHandle.layer = childLayer = layer;
-    } else {
+    } else {    // 如果边界节点已经有 layer 了（之前绘制时已经为其创建过 layer 了），则清空其子节点。
       assert(debugAlsoPaintedParent || childLayer.attached);
       Offset? debugOldOffset;
       assert(() {
         debugOldOffset = childLayer!.offset;
         return true;
       }());
+      // 清空了子节点
       childLayer.removeAllChildren();
       final OffsetLayer updatedLayer = child.updateCompositedLayer(oldLayer: childLayer);
       assert(identical(updatedLayer, childLayer),
@@ -165,7 +167,10 @@ class PaintingContext extends ClipContext {
       return true;
     }());
 
+    // 通过其 layer 构建一个 paintingContext ，之后 layer 便和 childContext 绑定，这意味着通过同一个
+    // paintingContext 的 canvas 绘制的产物属于同一个 layer 。
     childContext ??= PaintingContext(childLayer, child.paintBounds);
+    // 调用节点的 paint 方法,绘制子节点（树）
     child._paintWithContext(childContext, Offset.zero);
 
     // Double-check that the paint method did not replace the layer (the first
@@ -1006,6 +1011,7 @@ class PipelineOwner {
         assert(!_shouldMergeDirtyNodes);
         final List<RenderObject> dirtyNodes = _nodesNeedingLayout;
         _nodesNeedingLayout = <RenderObject>[];
+        // 按照节点在树中的深度从小到大排序后再重新 layout
         dirtyNodes.sort((RenderObject a, RenderObject b) => a.depth - b.depth);
         for (int i = 0; i < dirtyNodes.length; i++) {
           if (_shouldMergeDirtyNodes) {
@@ -1017,7 +1023,7 @@ class PipelineOwner {
           }
           final RenderObject node = dirtyNodes[i];
           if (node._needsLayout && node.owner == this) {
-            node._layoutWithoutResize();
+            node._layoutWithoutResize();    // 重新布局
           }
         }
         // No need to merge dirty nodes generated from processing the last
@@ -1124,10 +1130,14 @@ class PipelineOwner {
         _debugDoingPaint = true;
         return true;
       }());
+      // 遍历需要绘制的节点列表，然后逐个开始绘制。
+      // 被添加在该列表的节点都是边界节点
       final List<RenderObject> dirtyNodes = _nodesNeedingPaint;
+      // 清空重绘节点
       _nodesNeedingPaint = <RenderObject>[];
 
       // Sort the dirty nodes in reverse order (deepest first).
+      // 遍历绘制节点，深度优先
       for (final RenderObject node in dirtyNodes..sort((RenderObject a, RenderObject b) => b.depth - a.depth)) {
         assert(node._layerHandle.layer != null);
         if ((node._needsPaint || node._needsCompositedLayerUpdate) && node.owner == this) {
@@ -1797,6 +1807,15 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
   }
   bool _needsLayout = true;
 
+  // 指向自身的布局边界节点，当前节点布局发生变化后，自身到其布局边界节点路径上的所有节点都需要 relayout
+  // 一个组件是否是 relayoutBoundary 的条件是什么呢？这里有一个原则和四个场景
+  // 原则是“组件自身的大小变化不会影响父组件”，如果一个组件满足以下四种情况之一，则它便是 relayoutBoundary ：
+  // 1、当前组件父组件的大小不依赖当前组件大小时；这种情况下父组件在布局时会调用子组件布局函数时并会给子组件传递一个 parentUsesSize 参数，
+  // 该参数为 false 时表示父组件的布局算法不会依赖子组件的大小。（ parentUsesSize = false ）
+  // 2、组件的大小只取决于父组件传递的约束，而不会依赖后代组件的大小。这样的话后代组件的大小变化就不会影响自身的大小了，
+  // 这种情况组件的 sizedByParent 属性必须为 true（具体我们后面会讲）。
+  // 3、父组件传递给自身的约束是一个严格约束（固定宽高，下面会讲）；这种情况下即使自身的大小依赖后代元素，但也不会影响父组件。
+  // 4、组件为根组件；Flutter 应用的根组件是 RenderView，它的默认大小是当前设备屏幕大小。
   RenderObject? _relayoutBoundary;
 
   /// Whether [invokeLayoutCallback] for this render object is currently running.
@@ -1890,6 +1909,8 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
   ///
   /// If [sizedByParent] has changed, calls
   /// [markNeedsLayoutForSizedByParentChange] instead of [markNeedsLayout].
+  /// 将自身到其 relayoutBoundary 路径上的所有节点标记为 “需要布局” 。
+  /// 请求新的 frame；在新的 frame 中会对标记为“需要布局”的节点重新布局。
   void markNeedsLayout() {
     assert(_debugCanPerformMutations);
     if (_needsLayout) {
@@ -1902,13 +1923,15 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
         // _relayoutBoundary is cleaned by an ancestor in RenderObject.layout.
         // Conservatively mark everything dirty until it reaches the closest
         // known relayout boundary.
+        // _relayoutBoundary 由 RenderObject.layout 中的祖先清除。
+        // 保守地将所有内容标记为脏，直到它到达最近的已知重新布局边界。
         markParentNeedsLayout();
       }
       return;
     }
-    if (_relayoutBoundary != this) {
-      markParentNeedsLayout();
-    } else {
+    if (_relayoutBoundary != this) {  // 如果不是布局边界节点
+      markParentNeedsLayout();        // 递归调用前节点到其布局边界节点路径上所有节点的方法 markNeedsLayout
+    } else {                          // 如果是布局边界节点
       _needsLayout = true;
       if (owner != null) {
         assert(() {
@@ -1917,7 +1940,9 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
           }
           return true;
         }());
+        // 将布局边界节点加入到 pipelineOwner._nodesNeedingLayout 列表中
         owner!._nodesNeedingLayout.add(this);
+        // 该函数最终会请求新的 frame
         owner!.requestVisualUpdate();
       }
     }
@@ -1939,7 +1964,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
     assert(this.parent != null);
     final RenderObject parent = this.parent! as RenderObject;
     if (!_doingThisLayoutWithCallback) {
-      parent.markNeedsLayout();
+      parent.markNeedsLayout(); // 调用父中的重新布局
     } else {
       assert(parent._debugDoingThisLayout);
     }
@@ -2024,7 +2049,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       return true;
     }());
     try {
-      performLayout();
+      performLayout();    // 重新布局，会递归布局后代节点
       markNeedsSemanticsUpdate();
     } catch (e, stack) {
       _reportException('performLayout', e, stack);
@@ -2036,7 +2061,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       return true;
     }());
     _needsLayout = false;
-    markNeedsPaint();
+    markNeedsPaint();   // 布局更新后，UI 也是需要更新的
   }
 
   /// Compute the layout for this render object.
@@ -2062,6 +2087,15 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
   /// children unconditionally. It is the [layout] method's responsibility (as
   /// implemented here) to return early if the child does not need to do any
   /// work to update its layout information.
+  /// 简单来讲布局过程分以下几步：
+  /// 1、确定当前组件的布局边界
+  /// 2、判断是否需要重新布局，如果没必要会直接返回，反之才需要重新布局。不需要布局时需要同时满足三个条件：
+  /// one、当前组件没有被标记为需要重新布局
+  /// two、父组件传递的约束没有发生变化
+  /// three、当前组件的布局边界也没有发生变化时（这个在 2.10.1 有，3.7.0 没有）
+  /// 3、调用 performLayout() 进行布局，因为 performLayout() 中又会调用子组件的 layout 方法，
+  /// 所以这时一个递归的过程，递归结束后整个组件树的布局也就完成了。
+  /// 4、请求重绘。
   @pragma('vm:notify-debugger-on-exception')
   void layout(Constraints constraints, { bool parentUsesSize = false }) {
     assert(!_debugDisposed);
@@ -2110,6 +2144,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
     ));
     assert(!_debugDoingThisResize);
     assert(!_debugDoingThisLayout);
+    // 确定当前组件的布局边界，如果满足
     final bool isRelayoutBoundary = !parentUsesSize || sizedByParent || constraints.isTight || parent is! RenderObject;
     final RenderObject relayoutBoundary = isRelayoutBoundary ? this : (parent! as RenderObject)._relayoutBoundary!;
     assert(() {
@@ -2117,6 +2152,13 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       return true;
     }());
 
+    // _needsLayout 表示当前组件是否被标记为需要布局
+    // _constraints 是上次布局时父组件传递给当前组件的约束
+    // _relayoutBoundary 为上次布局时当前组件的布局边界
+    // 所以，当当前组件没有被标记为需要重新布局，且父组件传递的约束没有发生变化，直接返回即可
+    // 在 2.10.1 中，这里的判断是
+    // if (!_needsLayout && constraints == _constraints && relayoutBoundary == _relayoutBoundary)
+    // 则会增加一个条件的判断，且布局边界也没有发生变化时则不需要重新布局
     if (!_needsLayout && constraints == _constraints) {
       assert(() {
         // in case parentUsesSize changed since the last invocation, set size
@@ -2142,6 +2184,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       }
       return;
     }
+    // 缓存父 widget 约束
     _constraints = constraints;
     if (_relayoutBoundary != null && relayoutBoundary != _relayoutBoundary) {
       // The local relayout boundary has changed, must notify children in case
@@ -2149,6 +2192,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       // their actual relayout boundary is later.
       visitChildren(_cleanChildRelayoutBoundary);
     }
+    // 缓存边界
     _relayoutBoundary = relayoutBoundary;
     assert(!_debugMutationsLocked);
     assert(!_doingThisLayoutWithCallback);
@@ -2186,6 +2230,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       return true;
     }());
     try {
+      // 执行布局
       performLayout();
       markNeedsSemanticsUpdate();
       assert(() {
@@ -2201,7 +2246,9 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       _debugMutationsLocked = false;
       return true;
     }());
+    // 布局结束后将 _needsLayout 置为 false
     _needsLayout = false;
+    // 将当前组件标记为需要重绘（因为布局发生变化后，需要重新绘制）
     markNeedsPaint();
 
     if (!kReleaseMode && debugProfileLayoutsEnabled) {
@@ -2233,6 +2280,11 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
   /// object in [performLayout]. Instead, that work should be done by
   /// [performResize] or - for subclasses of [RenderBox] - in
   /// [RenderBox.computeDryLayout].
+  /// 当 sizedByParent 为 true 时表示：当前组件的大小只取决于父组件传递的约束，而不会依赖后代组件的大小。
+  /// 一般在 performLayout 中确定当前组件的大小时通常会依赖子组件的大小，
+  /// 如果 sizedByParent 为 true，则当前组件的大小就不依赖子组件大小了，
+  /// 为了逻辑清晰，Flutter 框架中约定，当sizedByParent 为 true 时，确定当前组件大小的逻辑应抽离到 performResize() 中，
+  /// 这种情况下 performLayout 主要的任务便只有两个：对子组件进行布局和确定子组件在当前组件中的布局起始位置偏移。
   @protected
   bool get sizedByParent => false;
 
@@ -2602,6 +2654,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
     _needsPaint = true;
     // If this was not previously a repaint boundary it will not have
     // a layer we can paint from.
+    // 如果当前节点是边界节点，或曾经是边界节点
     if (isRepaintBoundary && _wasRepaintBoundary) {
       assert(() {
         if (debugPrintMarkNeedsPaintStacks) {
@@ -2613,11 +2666,14 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       // ourselves without involving any other nodes.
       assert(_layerHandle.layer is OffsetLayer);
       if (owner != null) {
+        // 将当前节点添加到需要重新绘制的列表中
         owner!._nodesNeedingPaint.add(this);
+        // 请求新的 frame，该方法最终会调用 scheduleFrame()
         owner!.requestVisualUpdate();
       }
-    } else if (parent is RenderObject) {
+    } else if (parent is RenderObject) {  // 若不是边界节点且存在父节点
       final RenderObject parent = this.parent! as RenderObject;
+      // 递归调用父节点的 markNeedsPaint
       parent.markNeedsPaint();
       assert(parent == this.parent);
     } else {
@@ -2634,6 +2690,10 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
       //
       // Trees rooted at a RenderView do not go through this
       // code path because RenderViews are repaint boundaries.
+      // 如果是根节点，直接请求新的 frame 即可
+      // 在当前版本的 Flutter 中是永远不会走到这一分支的，
+      // 因为当前版本中根节点是一个 RenderView ，而该组件的 isRepaintBoundary 属性为 true，
+      // 所以如果调用 renderView.markNeedsPaint() 是会走到 isRepaintBoundary 为 true 的分支的。
       if (owner != null) {
         owner!.requestVisualUpdate();
       }
@@ -2850,7 +2910,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
     _needsCompositedLayerUpdate = false;
     _wasRepaintBoundary = isRepaintBoundary;
     try {
-      paint(context, offset);
+      paint(context, offset); // 调用了绘制
       assert(!_needsLayout); // check that the paint() method didn't mark us dirty again
       assert(!_needsPaint); // check that the paint() method didn't mark us dirty again
     } catch (e, stack) {
